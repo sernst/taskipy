@@ -7,6 +7,9 @@ class Task:
         self.__task_command = self.__extract_task_command(task_toml_contents)
         self.__task_description = self.__extract_task_description(task_toml_contents)
         self.__task_use_vars = self.__extract_task_use_vars(task_toml_contents)
+        self.__task_expand_env_vars = self.__extract_task_expand_env_vars(
+            task_toml_contents
+        )
 
     @property
     def name(self):
@@ -24,6 +27,10 @@ class Task:
     def use_vars(self):
         return self.__task_use_vars
 
+    @property
+    def expand_env_vars(self):
+        return self.__task_expand_env_vars
+
     def __extract_task_use_vars(self, task_toml_contents: object) -> bool:
         if isinstance(task_toml_contents, str):
             return False
@@ -32,7 +39,7 @@ class Task:
             if not isinstance(value, bool):
                 raise MalformedTaskError(self.__task_name, f'task\'s "use_vars" arg has to be bool type got {type(value)}')
             return value
-        raise MalformedTaskError(self.__task_name, 'tasks must be strings, or dicts that contain { cmd, help, use_vars }')
+        raise MalformedTaskError(self.__task_name, 'tasks must be strings, or dicts that contain { cmd, help, use_vars, expand_env_vars }')
 
     def __extract_task_command(self, task_toml_contents: object) -> str:
         if isinstance(task_toml_contents, str):
@@ -44,7 +51,7 @@ class Task:
             except KeyError:
                 raise MalformedTaskError(self.__task_name, 'the task item does not have the "cmd" property')
 
-        raise MalformedTaskError(self.__task_name, 'tasks must be strings, or dicts that contain { cmd, help, use_vars }')
+        raise MalformedTaskError(self.__task_name, 'tasks must be strings, or dicts that contain { cmd, help, use_vars, expand_env_vars }')
 
     def __extract_task_description(self, task_toml_contents: object) -> str:
         if isinstance(task_toml_contents, str):
@@ -56,4 +63,14 @@ class Task:
             except KeyError:
                 return ''
 
-        raise MalformedTaskError(self.__task_name, 'tasks must be strings, or dicts that contain { cmd, help, use_vars}')
+        raise MalformedTaskError(self.__task_name, 'tasks must be strings, or dicts that contain { cmd, help, use_vars, expand_env_vars }')
+
+    def __extract_task_expand_env_vars(self, task_toml_contents: object) -> bool:
+        if isinstance(task_toml_contents, str):
+            return False
+        if isinstance(task_toml_contents, dict):
+            value = task_toml_contents.get('expand_env_vars', False)
+            if not isinstance(value, bool):
+                raise MalformedTaskError(self.__task_name, f'task\'s "expand_env_vars" arg has to be bool type got {type(value)}')
+            return value
+        raise MalformedTaskError(self.__task_name, 'tasks must be strings, or dicts that contain { cmd, help, use_vars, expand_env_vars }')

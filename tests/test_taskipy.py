@@ -7,7 +7,7 @@ import unittest
 import warnings
 import psutil  # type: ignore
 from os import path
-from typing import List, Tuple
+from typing import List, Tuple, Mapping
 
 from tests.utils.project import (
     GenerateProjectFromFixture,
@@ -24,15 +24,15 @@ class TaskipyTestCase(unittest.TestCase):
         for tmp_dir in self._tmp_dirs:
             tmp_dir.clean()
 
-    def run_task(self, task: str, args: List[str] = None, cwd=os.curdir) -> Tuple[int, str, str]:
-        proc = self.start_taskipy_process(task, args=args, cwd=cwd)
+    def run_task(self, task: str, args: List[str] = None, cwd=os.curdir, env: Mapping[str, str] = None) -> Tuple[int, str, str]:
+        proc = self.start_taskipy_process(task, args=args, cwd=cwd, env=env)
         stdout, stderr = proc.communicate()
         return proc.returncode, stdout.decode(), str(stderr)
 
-    def start_taskipy_process(self, task: str, args: List[str] = None, cwd=os.curdir) -> subprocess.Popen:
+    def start_taskipy_process(self, task: str, args: List[str] = None, cwd=os.curdir, env: Mapping[str, str] = None) -> subprocess.Popen:
         executable_path = path.abspath('task')
         args = args or []
-        return subprocess.Popen([executable_path, task] + args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd)
+        return subprocess.Popen([executable_path, task] + args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, env=env or os.environ)
 
     def create_test_dir_from_fixture(self, fixture_name: str):
         project_generator = GenerateProjectFromFixture(path.join('tests', 'fixtures', fixture_name))
@@ -272,7 +272,7 @@ class TaskDescriptionTestCase(TaskipyTestCase):
         exit_code, stdout, _ = self.run_task('print_age', cwd=cwd)
 
         self.assertEqual(exit_code, 1)
-        self.assertSubstr('tasks must be strings, or dicts that contain { cmd, help, use_vars }', stdout)
+        self.assertSubstr('tasks must be strings, or dicts that contain { cmd, help, use_vars, expand_env_vars }', stdout)
 
 
 class TaskRunFailTestCase(TaskipyTestCase):
@@ -521,4 +521,69 @@ class UseVarsTestCase(TaskipyTestCase):
         cwd = self.create_test_dir_with_py_project_toml(py_project_toml)
         exit_code, stdout, _ = self.run_task('echo', cwd=cwd)
         self.assertSubstr('hello John Doe :', stdout)
+        self.assertEqual(exit_code, 0)
+
+
+class ExpandEnvVarsTestCase(TaskipyTestCase):
+    def test_expand_env_vars_working(self):
+        py_project_toml = '''
+            [tool.taskipy.tasks]
+            echo = { cmd = "echo $TEST_ENV_VAR", expand_env_vars = true }
+        '''
+        cwd = self.create_test_dir_with_py_project_toml(py_project_toml)
+        exit_code, stdout, _ = self.run_task('echo', cwd=cwd, env={'TEST_ENV_VAR': 'hello world'})
+        self.assertSubstr('hello world', stdout)
+        self.assertEqual(exit_code, 0)
+
+    def test_expand_env_vars_no_param(self):
+        py_project_toml = '''
+            [tool.taskipy.tasks]
+            echo = { cmd = "echo $TEST_ENV_VAR" }
+        '''
+        cwd = self.create_test_dir_with_py_project_toml(py_project_toml)
+        exit_code, stdout, _ = self.run_task('echo', cwd=cwd, env={'TEST_ENV_VAR': 'hello world'})
+        self.assertSubstr('$TEST_ENV_VAR', stdout)
+        self.assertEqual(exit_code, 0)
+
+    def test_expand_env_vars_param_disabled(self):
+        py_project_toml = '''
+            [tool.taskipy.tasks]
+            echo = { cmd = "echo $TEST_ENV_VAR", expand_env_vars = false }
+        '''
+        cwd = self.create_test_dir_with_py_project_toml(py_project_toml)
+        exit_code, stdout, _ = self.run_task('echo', cwd=cwd, env={'TEST_ENV_VAR': 'hello world'})
+        self.assertSubstr('$TEST_ENV_VAR', stdout)
+        self.assertEqual(exit_code, 0)
+
+    def test_expand_env_vars_str_task_no_param(self):
+        py_project_toml = '''
+            [tool.taskipy.tasks]
+            echo = "echo $TEST_ENV_VAR"
+        '''
+        cwd = self.create_test_dir_with_py_project_toml(py_project_toml)
+        exit_code, stdout, _ = self.run_task('echo', cwd=cwd, env={'TEST_ENV_VAR': 'hello world'})
+        self.assertSubstr('$TEST_ENV_VAR', stdout)
+        self.assertEqual(exit_code, 0)
+
+    def test_expand_env_vars_param_malformed(self):
+        py_project_toml = '''
+            [tool.taskipy.tasks]
+            echo = { cmd = "echo $TEST_ENV_VAR", expand_env_vars = 1 }
+        '''
+        cwd = self.create_test_dir_with_py_project_toml(py_project_toml)
+        exit_code, stdout, _ = self.run_task('echo', cwd=cwd, env={'TEST_ENV_VAR': 'hello world'})
+        self.assertSubstr('task\'s "expand_env_vars" arg has to be bool', stdout)
+        self.assertEqual(exit_code, 1)
+
+    def test_expand_env_vars_setting(self):
+        py_project_toml = '''
+            [tool.taskipy.settings]
+            expand_env_vars = true
+
+            [tool.taskipy.tasks]
+            echo = "echo $TEST_ENV_VAR"
+        '''
+        cwd = self.create_test_dir_with_py_project_toml(py_project_toml)
+        exit_code, stdout, _ = self.run_task('echo', cwd=cwd, env={'TEST_ENV_VAR': 'hello world'})
+        self.assertSubstr('hello world', stdout)
         self.assertEqual(exit_code, 0)

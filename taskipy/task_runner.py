@@ -1,3 +1,4 @@
+import os.path
 import sys
 import platform
 import psutil  # type: ignore
@@ -65,6 +66,9 @@ class TaskRunner:
 
         if self.__project.runner is not None:
             command = f'{self.__project.runner} {command}'
+
+        if task.expand_env_vars:
+            command = os.path.expandvars(command)
 
         def send_signal_to_task_process(signum: int, _frame) -> None:
             # pylint: disable=W0640
